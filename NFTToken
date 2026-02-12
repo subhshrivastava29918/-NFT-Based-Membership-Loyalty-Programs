@@ -1,1 +1,162 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/extensions/ERC721URIStorage.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
+
+/**
+ * @title NFTToken
+ * @dev ERC721 NFT token contract with URI storage
+ */
+contract NFTToken is ERC721, ERC721URIStorage, Ownable {
+    using Counters for Counters.Counter;
+    
+    Counters.Counter private _tokenIdCounter;
+    
+    // Mapping from token ID to creator
+    mapping(uint256 => address) public creators;
+    
+    // Mapping from token ID to royalty percentage (in basis points, e.g., 500 = 5%)
+    mapping(uint256 => uint256) public royalties;
+    
+    // Events
+    event TokenMinted(
+        uint256 indexed tokenId,
+        address indexed creator,
+        string tokenURI
+    );
+    
+    event TokenBurned(uint256 indexed tokenId);
+    
+    event RoyaltySet(uint256 indexed tokenId, uint256 royaltyPercentage);
+    
+    /**
+     * @dev Initialize the NFT contract
+     */
+    constructor() ERC721("NFT Marketplace Token", "NFTMKT") {}
+    
+    /**
+     * @dev Mint a new NFT
+     * @param to Address to receive the token
+     * @param uri Token metadata URI
+     * @param royaltyPercentage Royalty percentage in basis points
+     * @return tokenId The ID of the newly minted token
+     */
+    function mint(
+        address to,
+        string memory uri,
+        uint256 royaltyPercentage
+    ) public returns (uint256) {
+        require(to != address(0), "Cannot mint to zero address");
+        require(royaltyPercentage <= 10000, "Royalty cannot exceed 100%");
+        
+        uint256 tokenId = _tokenIdCounter.current();
+        _tokenIdCounter.increment();
+        
+        _safeMint(to, tokenId);
+        _setTokenURI(tokenId, uri);
+        
+        creators[tokenId] = msg.sender;
+        royalties[tokenId] = royaltyPercentage;
+        
+        emit TokenMinted(tokenId, msg.sender, uri);
+        emit RoyaltySet(tokenId, royaltyPercentage);
+        
+        return tokenId;
+    }
+    
+    /**
+     * @dev Burn an NFT
+     * @param tokenId ID of token to burn
+     */
+    function burn(uint256 tokenId) public {
+        require(
+            _isApprovedOrOwner(msg.sender, tokenId),
+            "Only token owner or approved can burn"
+        );
+        
+        _burn(tokenId);
+        emit TokenBurned(tokenId);
+    }
+    
+    /**
+     * @dev Get the creator of a token
+     * @param tokenId ID of the token
+     * @return Creator address
+     */
+    function getCreator(uint256 tokenId) public view returns (address) {
+        require(_exists(tokenId), "Token does not exist");
+        return creators[tokenId];
+    }
+    
+    /**
+     * @dev Get royalty information
+     * @param tokenId ID of the token
+     * @param salePrice Sale price of the token
+     * @return receiver Royalty recipient address
+     * @return royaltyAmount Royalty amount in wei
+     */
+    function royaltyInfo(uint256 tokenId, uint256 salePrice)
+        public
+        view
+        returns (address, uint256)
+    {
+        require(_exists(tokenId), "Token does not exist");
+        
+        address receiver = creators[tokenId];
+        uint256 royaltyAmount = (salePrice * royalties[tokenId]) / 10000;
+        
+        return (receiver, royaltyAmount);
+    }
+    
+    /**
+     * @dev Get total supply of tokens minted
+     */
+    function totalSupply() public view returns (uint256) {
+        return _tokenIdCounter.current();
+    }
+    
+    /**
+     * @dev Set royalty for a token (only owner/creator)
+     */
+    function setRoyalty(uint256 tokenId, uint256 royaltyPercentage) public {
+        require(_exists(tokenId), "Token does not exist");
+        require(
+            msg.sender == creators[tokenId] || msg.sender == owner(),
+            "Only creator or owner can set royalty"
+        );
+        require(royaltyPercentage <= 10000, "Royalty cannot exceed 100%");
+        
+        royalties[tokenId] = royaltyPercentage;
+        emit RoyaltySet(tokenId, royaltyPercentage);
+    }
+    
+    // Override required functions
+    function _burn(uint256 tokenId)
+        internal
+        override(ERC721, ERC721URIStorage)
+    {
+        super._burn(tokenId);
+    }
+    
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override(ERC721, ERC721URIStorage)
+        returns (string memory)
+    {
+        return super.tokenURI(tokenId);
+    }
+    
+    function supportsInterface(bytes4 interfaceId)
+        public
+        view
+        override(ERC721, ERC721URIStorage)
+        returns (bool)
+    {
+        return super.supportsInterface(interfaceId);
+    }
+}
 
